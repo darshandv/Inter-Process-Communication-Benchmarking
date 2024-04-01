@@ -1,0 +1,24 @@
+# Ignore build directory
+/build/
+
+# Ignore .vscode directory
+/.vscode/
+
+# Ignore all files in the libtorch directory
+/libtorch/
+
+# Ignore all .o and .a files
+*.o
+*.a
+
+# Ignore all files that end in ~
+*~
+
+# Ignore all .log files
+*.log
+
+# Ignore macOS .DS_Store files
+.DS_Store
+
+# Ignore SWE Exercise - IPC.pdf
+SWE Exercise - IPC.pdf
