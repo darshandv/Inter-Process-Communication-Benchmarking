@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <cstring>
 
-#define DEBUG 0
 
 void IPCSocket::sendAndReceive(int matrixSize) {
     int server_fd, new_socket, valread;
@@ -81,11 +80,11 @@ void IPCSocket::sendAndReceive(int matrixSize) {
 
         torch::Tensor matrix = deserializeTensor(recv_buf, {matrixSize, matrixSize});
         DEBUG_PRINT(1, "Socket: Child completed reading buffer and deserializing\n");
-        MatrixOperation::printMatrix(matrix);
+        // MatrixOperation::printMatrix(matrix);
         torch::Tensor squared_matrix = MatrixOperation::squareMatrix(matrix);
 
         DEBUG_PRINT(1, "Socket: Child deserialized and squared matrix\n");
-        MatrixOperation::printMatrix(squared_matrix);
+        // MatrixOperation::printMatrix(squared_matrix);
         // send the processed matrix back to server
         auto send_buf = serializeTensor(squared_matrix);
         // write(sock, send_buf.data(), send_buf.size());
@@ -96,7 +95,7 @@ void IPCSocket::sendAndReceive(int matrixSize) {
             exit(EXIT_FAILURE);
         }
         DEBUG_PRINT(1, "Socket: Child Serialized and and wrote to socket\n");
-            
+        exit(0);
     } else { //parent process
         DEBUG_PRINT(1, "Socket: Parent accepting connections\n");
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0){
@@ -114,7 +113,7 @@ void IPCSocket::sendAndReceive(int matrixSize) {
             exit(EXIT_FAILURE);
         }
         DEBUG_PRINT(1, "Socket: Parent wrote "<<bytes_written<<" bytes to the socket\n");
-        MatrixOperation::printMatrix(matrix);
+        // MatrixOperation::printMatrix(matrix);
 
         std::vector<char>recv_buf(matrixSize * matrixSize * sizeof(CPP_TENSOR_DTYPE));
         // read(new_socket, recv_buf.data(), recv_buf.size());
@@ -128,7 +127,7 @@ void IPCSocket::sendAndReceive(int matrixSize) {
         // Deserialize the received buffer into a tensor
         auto result = deserializeTensor(recv_buf, {matrixSize, matrixSize});
         DEBUG_PRINT(1, "Socket: Parent deserialized the matrix\n");
-        MatrixOperation::printMatrix(result);
+        // MatrixOperation::printMatrix(result);
 
         // Check if the received squared matrix matches the reference squared matrix
         bool isSquaredCorrectly = MatrixOperation::checkIfSquaredMatrix(matrix, result);

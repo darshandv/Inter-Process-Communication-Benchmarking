@@ -4,7 +4,6 @@
 #include "IPCMethod.h"
 #include <string>
 #include <vector>
-#include <torch/torch.h>
 
 class IPCSocket: public IPCMethod {
     public:
