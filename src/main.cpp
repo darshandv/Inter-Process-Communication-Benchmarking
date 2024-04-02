@@ -9,7 +9,6 @@
 #include <random>
 
 int main() {
-    // const int matrixSize = 1024; // Example matrix size
     std::vector<std::unique_ptr<IPCMethod>> ipcMethods;
     ipcMethods.push_back(std::make_unique<IPCPipe>());
     ipcMethods.push_back(std::make_unique<IPCSharedMemory>());
@@ -73,13 +72,14 @@ int main() {
         // check if the squared matrix is correct
         bool isSquaredCorrectly = MatrixOperation::checkIfSquaredMatrix(matrix, squaredMatrix);
         if (isSquaredCorrectly) {
-            std::cout << "The matrix was squared correctly." << std::endl;
+            std::cout << "The matrix is squared correctly." << std::endl;
         } else {
             std::cout << "The matrix was not squared correctly." << std::endl;
         }
     }
 
     for (auto& method : ipcMethods) {
+        // exit subprocesses for each IPC method
         method->exitSubprocess();
     }
 

@@ -86,28 +86,6 @@ void IPCSharedMemory::initSubprocess() {
         bool shouldChildExit = false;
         while (shouldChildExit == false) {
             shouldChildExit = processMatrixInBatches();
-            
-            // sem_wait(sem_parent_to_child);
-            // // non-blocking check if the exit semaphore was posted
-            // if (sem_trywait(sem_exit) == 0) {
-            //     std::cout << "SharedMem: Child process exiting...\n";
-            //     break; // exit the loop and thus the process
-            // }
-            // // Process the matrix here, use shmAddr
-            // torch::Tensor matrix = torch::from_blob(shmAddr, {4, 4}, MATRIX_DTYPE).clone();
-
-            // DEBUG_PRINT(1, "SharedMem: Child process received matrix\n");
-            // MatrixOperation::printMatrix(matrix);
-
-            // torch::Tensor result = MatrixOperation::squareMatrix(matrix);
-            // DEBUG_PRINT(1, "SharedMem: Child process squared matrix\n");
-            // MatrixOperation::printMatrix(result);
-
-            // // copy squred matric back to shared memory
-            // memcpy(shmAddr, result.data_ptr<CPP_TENSOR_DTYPE>(), result.numel() * sizeof(CPP_TENSOR_DTYPE));
-            // // signal back to parent
-            // sem_post(sem_child_to_parent);
-
         }
 
         // Cleanup
@@ -128,26 +106,6 @@ torch::Tensor IPCSharedMemory::sendAndReceiveV2(const torch::Tensor& matrix) {
         exit(EXIT_FAILURE);
     }
 
-    // if (ftruncate(shmFd, shmSize) == -1) {
-    //     perror("ftruncate");
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // assuming matrix is serialized to contiguous memory here
-    // copy matrix data to shared memory
-    // std::memcpy(shmAddr, matrix.data_ptr<CPP_TENSOR_DTYPE>(), shmSize);
-    
-
-    // // signal child process that data is ready
-    // sem_post(sem_parent_to_child);
-
-    // // Wait for the child to process the data
-    // sem_wait(sem_child_to_parent);
-
-    // // Assume result will be written back to the same shared memory location
-    // // Deserialize the result from shared memory back into a torch::Tensor
-    // auto result = torch::from_blob(shmAddr, {matrix.size(0), matrix.size(1)}, torch::kFloat32).clone();
-    
     DEBUG_PRINT(1, "SharedMem: Parent process has generated the matrix\n");
     // MatrixOperation::printMatrix(matrix);
     auto result = writeMatrixInBatchesAndReadBack(matrix);
@@ -168,12 +126,12 @@ torch::Tensor IPCSharedMemory::writeMatrixInBatchesAndReadBack(const torch::Tens
     // immediately signal the child that totalElements is available
     sem_post(sem_parent_to_child);
 
-    int batchSizeInBytes = shmSize - sizeof(int); // adjusting for totalElements
+    int batchSizeInBytes = shmSize - sizeof(int);                // adjusting for totalElements
     int batchSize = batchSizeInBytes / sizeof(CPP_TENSOR_DTYPE); // elements per batch
     auto ptr = matrix.data_ptr<CPP_TENSOR_DTYPE>();
-    char* batchPtr = static_cast<char*>(shmAddr) + sizeof(int); // offset by size of int
+    char* batchPtr = static_cast<char*>(shmAddr) + sizeof(int);  // offset by size of int
 
-    // Wait for child to acknowledge reading totalElements
+    // wait for child to acknowledge reading totalElements
     sem_wait(sem_child_to_parent);
 
     torch::Tensor result = torch::empty({matrix.size(0), matrix.size(1)}, matrix.options());
@@ -192,7 +150,7 @@ torch::Tensor IPCSharedMemory::writeMatrixInBatchesAndReadBack(const torch::Tens
         // wait for the child to signal back
         sem_wait(sem_child_to_parent);
 
-        // Read the squared matrix batch back from shared memory
+        // read the squared matrix batch back from shared memory
         std::memcpy(resultPtr + i, batchPtr, currentBatchSize * sizeof(CPP_TENSOR_DTYPE));
 
         i += currentBatchSize; // update for the next iteration
@@ -206,7 +164,7 @@ bool IPCSharedMemory::processMatrixInBatches() {
     sem_wait(sem_parent_to_child);
     // read totalElements from the beginning of shared memory
     if (sem_trywait(sem_exit) == 0) {
-            std::cout << "SharedMem: Child process exiting...\n";
+            DEBUG_PRINT(1, "SharedMem: Child process exiting...\n");
             return true; // exit the loop and thus the process
         }
     int totalElements;
@@ -231,15 +189,15 @@ bool IPCSharedMemory::processMatrixInBatches() {
         // we create one from the current batch in shared memory.
         torch::Tensor batch = torch::from_blob(batchPtr, {currentBatchSize}, torch::kFloat32).clone();
 
-        // Example processing: Squaring the matrix
+        // process the batch - square the elements
         torch::Tensor squaredBatch = batch.square();
 
-        // If you need to write the processed batch back:
+        // write the processed batch back:
         std::memcpy(batchPtr, squaredBatch.data_ptr<CPP_TENSOR_DTYPE>(), currentBatchSize * sizeof(CPP_TENSOR_DTYPE));
 
-        i += currentBatchSize; // Update for the next iteration
+        i += currentBatchSize; // update for the next iteration
 
-        sem_post(sem_child_to_parent); // Signal back to parent
+        sem_post(sem_child_to_parent); // signal back to parent
 
         // Check if the exit semaphore was posted after processing a batch
         if (sem_trywait(sem_exit) == 0) {
@@ -264,20 +222,15 @@ void IPCSharedMemory::exitSubprocess() {
     }
     DEBUG_PRINT(1, "SharedMem: Parent process waited for child to exit\n");
     // Cleanup shared memory and semaphore resources
-    munmap(shmAddr, shmSize); // Unmap shared memory
-    shm_unlink(shmName); // Unlink shared memory object
-    sem_close(sem_parent_to_child); // Close semaphore
-    sem_close(sem_child_to_parent); // Close semaphore
-    sem_close(sem_exit); // Close semaphore
+    munmap(shmAddr, shmSize);           // Unmap shared memory
+    shm_unlink(shmName);                // Unlink shared memory object
+    sem_close(sem_parent_to_child);     // Close semaphore
+    sem_close(sem_child_to_parent);     // Close semaphore
+    sem_close(sem_exit);                // Close semaphore
     sem_unlink("/sem_parent_to_child"); // Unlink semaphore
     sem_unlink("/sem_child_to_parent"); // Unlink semaphore
-    sem_unlink("/sem_exit"); // Unlink semaphore
+    sem_unlink("/sem_exit");            // Unlink semaphore
 
-    // // terminate child process
-    // if (childPid > 0) {
-    //     ::kill(childPid, SIGTERM); // Send termination signal using the global scope resolution operator
-    //     waitpid(childPid, nullptr, 0); // Wait for child process to terminate
-    // }
 }
 
 
@@ -340,7 +293,7 @@ void IPCSharedMemory::sendAndReceive(int matrixSize){
             exit(EXIT_FAILURE);
         }
         exit(0);
-    } else { // Parent process
+    } else { // parent process
         // map shared memroy in address space of parent
         shared_mem = mmap(NULL, memSize, PROT_READ | PROT_WRITE, MAP_SHARED, memFd, 0);
         if (shared_mem == MAP_FAILED) {

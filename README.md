@@ -6,7 +6,7 @@ The IPC Benchmark Project demonstrates efficient inter-process communication (IP
 
 - **IPC Mechanisms**: Implements pipes, shared memory, and sockets for IPC.
 - **Matrix Operations**: Generates random matrices and performs squaring operations.
-- **Benchmarking**: Compares the performance of different IPC methods.
+- **Benchmarking**: Compares the performance of different IPC methods in terms of processing rate (in MBps).
 - **LibTorch Integration**: Utilizes LibTorch for matrix operations to leverage hardware acceleration.
 
 ## Prerequisites
@@ -19,7 +19,6 @@ Before you begin, ensure you have met the following requirements:
 
 Certainly! Here's an addition to the `README.md` to include instructions on setting up the MPI environment variable, which is essential for the project's operation. This assumes you're referring to the setup involving `DYLD_LIBRARY_PATH` or similar environment variables that were discussed earlier. I've added this under the "Installation" section:
 
-```markdown
 ## Installation
 
 To install the IPC Benchmark Project, follow these steps:
@@ -35,13 +34,11 @@ To install the IPC Benchmark Project, follow these steps:
    export LIBTORCH_PATH=/path/to/libtorch
    ```
 
-3. If you're using OpenMP (`libomp`) with LibTorch on macOS, ensure that your dynamic linker can find `libomp.dylib`. Set the `DYLD_LIBRARY_PATH` environment variable:
+3. If you're using OpenMP (`libomp`) with LibTorch on macOS, ensure that your dynamic linker can find `libomp.dylib`. Set the `DYLD_LIBRARY_PATH` environment variable. Please set it according to your installation paths. Here is an example:
    ```sh
     export LDFLAGS="-L/opt/homebrew/opt/libomp/lib"
     export CPPFLAGS="-I/opt/homebrew/opt/libomp/include"
     export DYLD_LIBRARY_PATH="/opt/homebrew/opt/libomp/lib:$DYLD_LIBRARY_PATH"
-
-    export DYLD_LIBRARY_PATH=/usr/local/opt/libomp/lib:$DYLD_LIBRARY_PATH
    ```
    Note: Adjust the path `/usr/local/opt/libomp/lib` as necessary based on where `libomp.dylib` is located on your system. You can find this location by running `brew info libomp` if you've installed `libomp` via Homebrew.
 

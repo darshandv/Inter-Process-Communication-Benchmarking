@@ -9,15 +9,15 @@ class IPCSocket: public IPCMethod {
     public:
         IPCSocket();
         ~IPCSocket() override;
-        void initSubprocess() override; // setup communication channel and fork
-        void exitSubprocess() override; // close communication channel and exit
-        void sendAndReceive(int matrixSize) override; // Placeholder for backward compatibility
+        void initSubprocess() override;               // setup communication channel and fork
+        void exitSubprocess() override;               // close communication channel and exit
+        void sendAndReceive(int matrixSize) override; // placeholder for backward compatibility
         torch::Tensor sendAndReceiveV2(const torch::Tensor& matrix) override; // actual implementation for tensor transmission
         std::string methodName() const override { return "Socket"; }
     private:
-        int serverFd = -1; // server socket file descriptor
-        int clientFd = -1; // client socket file descriptor
-        pid_t childPid = -1; // PID of the child process
+        int serverFd = -1;     // server socket file descriptor
+        int clientFd = -1;     // client socket file descriptor
+        pid_t childPid = -1;   // PID of the child process
         int customPort = 8080; // port number for socket communication
 
         // utility methods for socket operations

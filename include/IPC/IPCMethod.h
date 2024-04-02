@@ -6,10 +6,10 @@
 
 #include "debug.h"
 
-// For C++ standard library containers
+// for C++ standard library containers
 #define CPP_TENSOR_DTYPE float
 
-// For PyTorch tensors
+// for PyTorch tensors
 #define MATRIX_DTYPE torch::kFloat32
 
 class IPCMethod {
@@ -21,7 +21,6 @@ public:
     virtual torch::Tensor sendAndReceiveV2(const torch::Tensor& matrix) = 0;
     virtual std::string methodName() const = 0;
 
-    // int matrixSize = 0; // use same variable to communicate matrix size (can use separate pipe for this too)
 };
 
 #endif

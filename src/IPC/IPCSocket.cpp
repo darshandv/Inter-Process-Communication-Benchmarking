@@ -8,30 +8,28 @@
 #include <cstring>
 
 IPCSocket::IPCSocket() {
-    // we'll keep it simple and focus on initial setup that could be common to both roles.
-
     // initializing socket descriptors to -1 indicating they're not yet setup
     serverFd = -1;
     clientFd = -1;
 }
 
-// Destructor: Ensure clean resource release
+// destructor: ensure clean resource release
 IPCSocket::~IPCSocket() {
     closeSockets();
-    // If there's a child process created, make sure to wait for its termination
+    // If there's a child process not exited, make sure to wait for its termination
     if (childPid > 0) {
         int status;
-        waitpid(childPid, &status, 0); // Ensure the child process is reaped
+        waitpid(childPid, &status, 0); // ensure the child process is reaped
     }
 }
 
 void IPCSocket::closeSockets() {
-    // Close the server socket if it has been opened
+    // close the server socket if it has been opened
     if (serverFd != -1) {
         close(serverFd);
         serverFd = -1; // Reset to -1 to indicate it's closed
     }
-    // Close the client socket if it has been opened
+    // close the client socket if it has been opened
     if (clientFd != -1) {
         close(clientFd);
         clientFd = -1; // Reset to -1 to indicate it's closed
@@ -39,7 +37,7 @@ void IPCSocket::closeSockets() {
 }
 
 void IPCSocket::initSubprocess() {
-    // Setup server socket in parent process
+    // setup server socket in parent process
     serverFd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverFd == -1) {
         perror("socket failed");
@@ -76,28 +74,28 @@ void IPCSocket::initSubprocess() {
         close(serverFd);
         exit(EXIT_FAILURE);
     } else if (childPid == 0) { // Child process
-        close(serverFd); // Close server socket in child
+        close(serverFd); // close server socket in child
 
-        // Child process: setup client socket to connect back to the parent
+        // child process: setup client socket to connect back to the parent
         clientFd = socket(AF_INET, SOCK_STREAM, 0);
         if (clientFd < 0) {
             perror("socket failed in child");
             exit(EXIT_FAILURE);
         }
 
-        // Attempt to connect to the parent server
+        // attempt to connect to the parent server
         while (connect(clientFd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-            sleep(1); // Retry after delay if connection fails
+            sleep(1); // retry after delay if connection fails
         }
-        // Enter loop to wait for messages from the parent
+        // enter loop to wait for messages from the parent
         while (true) {
             torch::Tensor matrix;
             int matrixSize;
             
-            // Wait for the first piece of data to dictate action
+            // wait for the first piece of data to dictate action
             ssize_t bytes_read = read_full(clientFd, reinterpret_cast<char*>(&matrixSize), sizeof(matrixSize));
             
-            // Check for termination signal
+            // check for termination signal
             if (matrixSize == -25) {
                 break; // Exit the loop for cleanup
             }
@@ -117,15 +115,15 @@ void IPCSocket::initSubprocess() {
             // MatrixOperation::printMatrix(processedTensor);
         }
 
-        // Cleanup before exiting
+        // cleanup before exiting
         if (clientFd != -1) {
             close(clientFd);
             clientFd = -1;
         }
 
-        exit(0); // Ensure child exits cleanly after processing
+        exit(0); // ensure child exits cleanly after processing
     } else {
-        // Parent process: Accept connection from child
+        // parent process: Accept connection from child
         struct sockaddr_in clientAddr;
         socklen_t clientLen = sizeof(clientAddr);
         clientFd = accept(serverFd, (struct sockaddr *)&clientAddr, &clientLen);
@@ -134,7 +132,7 @@ void IPCSocket::initSubprocess() {
             close(serverFd);
             exit(EXIT_FAILURE);
         }
-        // Connection established; server socket can be closed or left open for listening to more clients
+        // Connection established; server socket is left open for continuous listening
     }
 }
 
@@ -202,7 +200,6 @@ ssize_t IPCSocket::read_full(int fd, char *buf, size_t count) {
     size_t total_read = 0;
     while (total_read < count) {
         // Print the arguments to the read function
-        // DEBUG_PRINT(1, "read(fd=" << fd << ", buf=" << static_cast<void*>(buf + total_read) << ", count=" << count - total_read << ")" << std::endl);
         ssize_t res = read(fd, buf + total_read, count - total_read);
         if (res < 0) {
             if (errno == EINTR) continue; // if interrupted by signal, try again
@@ -216,8 +213,8 @@ ssize_t IPCSocket::read_full(int fd, char *buf, size_t count) {
     return total_read;
 }
 
-// Attempt to write exactly 'count' bytes from 'buf' to 'fd'.
-// Returns the number of bytes written, or -1 on error.
+// attempt to write exactly 'count' bytes from 'buf' to 'fd'.
+// returns the number of bytes written, or -1 on error.
 ssize_t IPCSocket::write_full(int fd, const char *buf, size_t count) {
     size_t total_written = 0;
     while (total_written < count) {
@@ -247,11 +244,11 @@ void IPCSocket::exitSubprocess() {
         int terminationSignal = -25; // -25 is just randomly chosen assuming size will never be negative
         write_full(clientFd, reinterpret_cast<char*>(&terminationSignal), sizeof(terminationSignal));
         
-        // Wait for child process to exit
+        // wait for child process to exit
         int status;
         waitpid(childPid, &status, 0);
         
-        // Close client connection
+        // close client connection
         if (clientFd != -1) {
             close(clientFd);
             clientFd = -1;

@@ -41,8 +41,6 @@ void IPCPipe::initSubprocess() {
                 cmd[bytesRead] = '\0';
                 if (strncmp(cmd, "Process", 7) == 0) {
                     DEBUG_PRINT(2, "Pipes: Child entered processing\n");
-                    // close(dataPipe[0][1]); // close unused write end of first pipe
-                    // close(dataPipe[1][0]); // close unused read end of second pipe
 
                     // read matrix from the pipe
                     readMatrixFromPipe(dataPipe[0][0], matrix, matrixSize);
@@ -57,36 +55,30 @@ void IPCPipe::initSubprocess() {
                     DEBUG_PRINT(1, "Pipes: Child wrote matrix to the pipe\n");
                     // MatrixOperation::printMatrix(result);
 
-                    // close(dataPipe[0][0]);
-                    // close(dataPipe[1][1]);
-                    // After processing, send "Wait" command to itself or perform necessary action
+                    
+                    // after processing, send "Wait" command to itself to be in wait state
                     writeToControlPipe("Wait");
                 } else if (strncmp(cmd, "Exit", 4) == 0) {
-                    break; // Exit the loop and clean up
+                    break; // exit the loop and clean up
                 }
         
             }
             
         }
-        // close(dataPipe[0][0]);
-        // close(dataPipe[1][1]); 
-        // close(controlPipe[0]);
         exit(0);
     } else { // Parent process
-        // close(dataPipe[0][1]);
-        // close(dataPipe[1][0]); 
-        // close(controlPipe[0]); // Close unused read end of control pipe
+        
     }
 }
 
 void IPCPipe::writeToControlPipe(const char* msg, int matrixSize) {
-    // Send a "Size" message if matrixSize is provided
+    // send a "Size" message if matrixSize is provided
     if (matrixSize >= 0) {
         const char* sizeMsg = "Size";
-        write(controlPipe[1], sizeMsg, strlen(sizeMsg) + 1); // Send "Size" indicator
-        write(controlPipe[1], &matrixSize, sizeof(matrixSize)); // Send the actual matrixSize
+        write(controlPipe[1], sizeMsg, strlen(sizeMsg) + 1);    // send "Size" indicator
+        write(controlPipe[1], &matrixSize, sizeof(matrixSize)); // send the actual matrixSize
     }
-    // Send the command message
+    // send the command message
     else if (write(controlPipe[1], msg, strlen(msg) + 1) == -1) {
         perror("write");
         exit(EXIT_FAILURE);
@@ -107,18 +99,14 @@ std::string IPCPipe::readFromControlPipe() {
 
 // set matrix size
 void IPCPipe::setMatrixSize(int matrixSize) {
+    // not using this in v2 anymore
     // signal child process to set matrix size
     // writeToControlPipe("Size", matrixSize);
     this->matrixSize = matrixSize;
 }
 
 torch::Tensor IPCPipe::sendAndReceiveV2(const torch::Tensor& matrix) {
-    // TODO: Implement sending matrix to child process and receiving processed matrix
     torch::Tensor result;
-    // setMatrixSize(matrix.size(0));
-    // close(dataPipe[0][0]); // close unused read end of first pipe
-    // close(dataPipe[1][1]); // close unused write end of second pipe
-
 
     // signal child process to start processing
     writeToControlPipe("Process");
@@ -132,9 +120,6 @@ torch::Tensor IPCPipe::sendAndReceiveV2(const torch::Tensor& matrix) {
     readMatrixFromPipe(dataPipe[1][0], result, matrixSize);
     DEBUG_PRINT(1, "Pipes: Parent read matrix from the pipe\n");
     // MatrixOperation::printMatrix(result);
-
-    // To exit the child process cleanly
-    // writeToControlPipe("Exit");
 
     return result;
 }
@@ -188,9 +173,7 @@ void IPCPipe::readMatrixFromPipe(int fd, torch::Tensor &matrix, int matrixSizes)
         }
     }
 
-    // Ensure the entire matrix data was read
-
-    
+    // ensure the entire matrix data was read
     if (bytesReadTotal != totalSize) {
         std::cerr << "Error: Did not read the entire matrix from the pipe." << std::endl;
         exit(EXIT_FAILURE);
@@ -215,7 +198,7 @@ void IPCPipe::sendAndReceive(int matrixSize) {
     if (pid == -1) {
         perror("fork");
         exit(EXIT_FAILURE);
-    } else if (pid == 0) { // child process
+    } else if (pid == 0) {   // child process
         close(pipefd[0][1]); // close unused write end of first pipe
         close(pipefd[1][0]); // close unused read end of second pipe
 
