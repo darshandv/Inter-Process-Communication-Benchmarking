@@ -4,7 +4,7 @@
 #include <iostream>
 
 // Define your global debug level here
-#define DEBUG_LEVEL 2
+#define DEBUG_LEVEL 0
 
 // Debug print macro that checks the current debug level
 // Usage: DEBUG_PRINT(2, "Error with value: ", value);

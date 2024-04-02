@@ -86,7 +86,7 @@ void IPCSharedMemory::initSubprocess() {
         bool shouldChildExit = false;
         while (shouldChildExit == false) {
             shouldChildExit = processMatrixInBatches();
-
+            
             // sem_wait(sem_parent_to_child);
             // // non-blocking check if the exit semaphore was posted
             // if (sem_trywait(sem_exit) == 0) {

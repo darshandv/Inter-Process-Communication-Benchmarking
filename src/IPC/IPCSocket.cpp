@@ -7,6 +7,264 @@
 #include <unistd.h>
 #include <cstring>
 
+IPCSocket::IPCSocket() {
+    // we'll keep it simple and focus on initial setup that could be common to both roles.
+
+    // initializing socket descriptors to -1 indicating they're not yet setup
+    serverFd = -1;
+    clientFd = -1;
+}
+
+// Destructor: Ensure clean resource release
+IPCSocket::~IPCSocket() {
+    closeSockets();
+    // If there's a child process created, make sure to wait for its termination
+    if (childPid > 0) {
+        int status;
+        waitpid(childPid, &status, 0); // Ensure the child process is reaped
+    }
+}
+
+void IPCSocket::closeSockets() {
+    // Close the server socket if it has been opened
+    if (serverFd != -1) {
+        close(serverFd);
+        serverFd = -1; // Reset to -1 to indicate it's closed
+    }
+    // Close the client socket if it has been opened
+    if (clientFd != -1) {
+        close(clientFd);
+        clientFd = -1; // Reset to -1 to indicate it's closed
+    }
+}
+
+void IPCSocket::initSubprocess() {
+    // Setup server socket in parent process
+    serverFd = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverFd == -1) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    int opt = 1;
+    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt");
+        close(serverFd);
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(customPort);
+
+    if (bind(serverFd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        close(serverFd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(serverFd, 3) < 0) {
+        perror("listen");
+        close(serverFd);
+        exit(EXIT_FAILURE);
+    }
+
+    childPid = fork();
+    if (childPid == -1) {
+        perror("fork");
+        close(serverFd);
+        exit(EXIT_FAILURE);
+    } else if (childPid == 0) { // Child process
+        close(serverFd); // Close server socket in child
+
+        // Child process: setup client socket to connect back to the parent
+        clientFd = socket(AF_INET, SOCK_STREAM, 0);
+        if (clientFd < 0) {
+            perror("socket failed in child");
+            exit(EXIT_FAILURE);
+        }
+
+        // Attempt to connect to the parent server
+        while (connect(clientFd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+            sleep(1); // Retry after delay if connection fails
+        }
+        // Enter loop to wait for messages from the parent
+        while (true) {
+            torch::Tensor matrix;
+            int matrixSize;
+            
+            // Wait for the first piece of data to dictate action
+            ssize_t bytes_read = read_full(clientFd, reinterpret_cast<char*>(&matrixSize), sizeof(matrixSize));
+            
+            // Check for termination signal
+            if (matrixSize == -25) {
+                break; // Exit the loop for cleanup
+            }
+
+            // deserialize tensor received from parent
+            auto receivedTensor = receiveTensor(clientFd, matrixSize);
+
+            DEBUG_PRINT(1, "Socket: Child received matrix from parent\n");
+            // MatrixOperation::printMatrix(receivedTensor);
+
+            // perform the operation on the tensor (e.g., squaring)
+            auto processedTensor = receivedTensor.square();
+
+            // serialize and send the processed tensor back to the parent
+            sendTensor(clientFd, processedTensor);
+            DEBUG_PRINT(1, "Socket: Child sent matrix to parent\n");
+            // MatrixOperation::printMatrix(processedTensor);
+        }
+
+        // Cleanup before exiting
+        if (clientFd != -1) {
+            close(clientFd);
+            clientFd = -1;
+        }
+
+        exit(0); // Ensure child exits cleanly after processing
+    } else {
+        // Parent process: Accept connection from child
+        struct sockaddr_in clientAddr;
+        socklen_t clientLen = sizeof(clientAddr);
+        clientFd = accept(serverFd, (struct sockaddr *)&clientAddr, &clientLen);
+        if (clientFd < 0) {
+            perror("accept");
+            close(serverFd);
+            exit(EXIT_FAILURE);
+        }
+        // Connection established; server socket can be closed or left open for listening to more clients
+    }
+}
+
+torch::Tensor IPCSocket::sendAndReceiveV2(const torch::Tensor& matrix) {
+    sendTensor(clientFd, matrix);
+    DEBUG_PRINT(1, "Socket: Parent sent matrix to child\n");
+    // MatrixOperation::printMatrix(matrix);
+    
+    // receive the processed tensor from the child
+    auto resultTensor = receiveTensor(clientFd);
+    DEBUG_PRINT(1, "Socket: Parent received matrix from child\n");
+    // MatrixOperation::printMatrix(resultTensor);
+    return resultTensor;
+}
+
+void IPCSocket::sendTensor(int socketFd, const torch::Tensor& tensor) {
+    // serialize the tensor into a buffer
+    auto buffer = serializeTensor(tensor);
+    // send the buffer size first
+    int64_t bufferSize = buffer.size();
+    int matrixSize = tensor.size(0); // assuming square matrix
+    write_full(socketFd, reinterpret_cast<char*>(&matrixSize), sizeof(matrixSize));
+    // send the buffer content
+    write_full(socketFd, buffer.data(), buffer.size());
+}
+
+torch::Tensor IPCSocket::receiveTensor(int socketFd, int matrixSize) {
+    // receive the buffer size first
+    ssize_t bytes_read;
+    if (matrixSize == -1) {
+        bytes_read = read_full(socketFd, reinterpret_cast<char*>(&matrixSize), sizeof(matrixSize));
+        DEBUG_PRINT(1, "Socket:Child Read "<<bytes_read<<" bytes\n");
+        // allocate buffer for the tensor data
+    }
+    int64_t bufferSize = matrixSize * matrixSize * sizeof(CPP_TENSOR_DTYPE);
+    std::vector<char> buffer(bufferSize);
+    
+    // receive the buffer content
+    bytes_read = read_full(socketFd, buffer.data(), bufferSize);
+    DEBUG_PRINT(1, "Socket:Child Read "<<bytes_read<<" bytes\n");
+    
+    // deserialize the buffer into a tensor
+    auto tensor = deserializeTensor(buffer, {matrixSize, matrixSize});
+    return tensor;
+}
+
+// function to serialize the tensor
+std::vector<char> IPCSocket::serializeTensor(const torch::Tensor &tensor){
+    auto d_ptr = tensor.data_ptr<CPP_TENSOR_DTYPE>();
+    auto num_bytes = tensor.numel() * sizeof(CPP_TENSOR_DTYPE);
+    std::vector<char> buffer(num_bytes);
+    std::memcpy(buffer.data(), d_ptr, num_bytes);
+    return buffer;
+}
+
+// function to deserialize the tensor
+torch::Tensor IPCSocket::deserializeTensor(const std::vector<char> &buffer, const std::vector<int64_t> &size){
+    torch::Tensor tensor = torch::from_blob((void*)buffer.data(), at::IntArrayRef(size), MATRIX_DTYPE).clone();
+    return tensor;
+}
+
+// attempt to read exactly 'count' bytes from 'fd' into 'buf'.
+// returns the number of bytes read, or -1 on error.
+ssize_t IPCSocket::read_full(int fd, char *buf, size_t count) {
+    size_t total_read = 0;
+    while (total_read < count) {
+        // Print the arguments to the read function
+        // DEBUG_PRINT(1, "read(fd=" << fd << ", buf=" << static_cast<void*>(buf + total_read) << ", count=" << count - total_read << ")" << std::endl);
+        ssize_t res = read(fd, buf + total_read, count - total_read);
+        if (res < 0) {
+            if (errno == EINTR) continue; // if interrupted by signal, try again
+            // print the read error
+            perror("Read error");
+            return -1; // return error on actual read error
+        }
+        if (res == 0) break; // break on EOF
+        total_read += res;
+    }
+    return total_read;
+}
+
+// Attempt to write exactly 'count' bytes from 'buf' to 'fd'.
+// Returns the number of bytes written, or -1 on error.
+ssize_t IPCSocket::write_full(int fd, const char *buf, size_t count) {
+    size_t total_written = 0;
+    while (total_written < count) {
+        ssize_t res = write(fd, buf + total_written, count - total_written);
+        if (res < 0) {
+            if (errno == EINTR) continue; // if interrupted by signal, try again
+            return -1; // return error on actual write error
+        }
+        total_written += res;
+    }
+    return total_written;
+}
+
+
+void IPCSocket::exitSubprocess() {
+    if (childPid == 0) { // child process
+        // technically, the child process should exit when it receives the termination signal
+        // and this should never run
+        if (clientFd != -1) {
+            close(clientFd);
+            clientFd = -1;
+        }
+        exit(0); // ensure child exits cleanly
+    } else if (childPid > 0) { // parent process
+
+        // send termination signal to child
+        int terminationSignal = -25; // -25 is just randomly chosen assuming size will never be negative
+        write_full(clientFd, reinterpret_cast<char*>(&terminationSignal), sizeof(terminationSignal));
+        
+        // Wait for child process to exit
+        int status;
+        waitpid(childPid, &status, 0);
+        
+        // Close client connection
+        if (clientFd != -1) {
+            close(clientFd);
+            clientFd = -1;
+        }
+
+        // Optionally, close the server socket if no longer needed
+        if (serverFd != -1) {
+            close(serverFd);
+            serverFd = -1;
+        }
+    }
+}
+
 
 void IPCSocket::sendAndReceive(int matrixSize) {
     int server_fd, new_socket, valread;
@@ -146,49 +404,4 @@ void IPCSocket::sendAndReceive(int matrixSize) {
     }
 }
 
-// function to serialize the tensor
-std::vector<char> IPCSocket::serializeTensor(const torch::Tensor &tensor){
-    auto d_ptr = tensor.data_ptr<CPP_TENSOR_DTYPE>();
-    auto num_bytes = tensor.numel() * sizeof(CPP_TENSOR_DTYPE);
-    std::vector<char> buffer(num_bytes);
-    std::memcpy(buffer.data(), d_ptr, num_bytes);
-    return buffer;
-}
-
-// function to deserialize the tensor
-torch::Tensor IPCSocket::deserializeTensor(const std::vector<char> &buffer, const std::vector<int64_t> &size){
-    torch::Tensor tensor = torch::from_blob((void*)buffer.data(), at::IntArrayRef(size), MATRIX_DTYPE).clone();
-    return tensor;
-}
-
-// attempt to read exactly 'count' bytes from 'fd' into 'buf'.
-// returns the number of bytes read, or -1 on error.
-ssize_t IPCSocket::read_full(int fd, char *buf, size_t count) {
-    size_t total_read = 0;
-    while (total_read < count) {
-        ssize_t res = read(fd, buf + total_read, count - total_read);
-        if (res < 0) {
-            if (errno == EINTR) continue; // if interrupted by signal, try again
-            return -1; // return error on actual read error
-        }
-        if (res == 0) break; // break on EOF
-        total_read += res;
-    }
-    return total_read;
-}
-
-// Attempt to write exactly 'count' bytes from 'buf' to 'fd'.
-// Returns the number of bytes written, or -1 on error.
-ssize_t IPCSocket::write_full(int fd, const char *buf, size_t count) {
-    size_t total_written = 0;
-    while (total_written < count) {
-        ssize_t res = write(fd, buf + total_written, count - total_written);
-        if (res < 0) {
-            if (errno == EINTR) continue; // if interrupted by signal, try again
-            return -1; // return error on actual write error
-        }
-        total_written += res;
-    }
-    return total_written;
-}
 
