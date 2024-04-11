@@ -25,7 +25,7 @@ To install the IPC Benchmark Project, follow these steps:
 
 1. Clone the repository:
    ```sh
-   git clone <yet to be done> IPCBenchmarkProject
+   git clone https://github.com/darshandv/Inter-Process-Communication-Benchmarking.git IPCBenchmarkProject
    cd IPCBenchmarkProject
    ```
 
@@ -36,11 +36,9 @@ To install the IPC Benchmark Project, follow these steps:
 
 3. If you're using OpenMP (`libomp`) with LibTorch on macOS, ensure that your dynamic linker can find `libomp.dylib`. Set the `DYLD_LIBRARY_PATH` environment variable. Please set it according to your installation paths. Here is an example:
    ```sh
-    export LDFLAGS="-L/opt/homebrew/opt/libomp/lib"
-    export CPPFLAGS="-I/opt/homebrew/opt/libomp/include"
-    export DYLD_LIBRARY_PATH="/opt/homebrew/opt/libomp/lib:$DYLD_LIBRARY_PATH"
+    export DYLD_LIBRARY_PATH="/path/to/libomp/lib:$DYLD_LIBRARY_PATH"
    ```
-   Note: Adjust the path `/usr/local/opt/libomp/lib` as necessary based on where `libomp.dylib` is located on your system. You can find this location by running `brew info libomp` if you've installed `libomp` via Homebrew.
+   Note: Adjust the path `/path/to/libomp/lib` as necessary based on where `libomp.dylib` is located on your system. You can find this location by running `brew info libomp` if you've installed `libomp` via Homebrew.
 
 4. Build the project using CMake:
    ```sh
@@ -79,8 +77,3 @@ Contributions to the IPC Benchmark Project are welcome. To contribute:
 
 - Thank you to the [PyTorch](https://pytorch.org/) team for providing the LibTorch library.
 - This project was inspired by the need to understand and benchmark IPC mechanisms in modern C++ applications.
-
-## Contact
-
-If you have any questions or feedback, please contact [Darshan D Vishwanath] at my email dvishwan@usc.edu
-
